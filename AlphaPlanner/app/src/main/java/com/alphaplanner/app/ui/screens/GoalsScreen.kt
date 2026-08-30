@@ -44,31 +44,14 @@ fun GoalsScreen() {
             }
         }
 
-        item {
-            GoalSummaryCard(
-                title = "Financial Freedom",
-                current = PlannerStore.items.filter { it.type == "Investment" }.sumOf { it.amount },
-                target = PlannerStore.freedomTarget.value,
-                icon = Icons.Default.RocketLaunch
-            )
-        }
-
-        item {
-            GoalSummaryCard(
-                title = "Emergency Fund",
-                current = PlannerStore.items.filter { it.type == "Emergency" }.sumOf { it.amount },
-                target = PlannerStore.emergencyTarget.value,
-                icon = Icons.Default.HealthAndSafety
-            )
-        }
+        item { GoalSummaryCard("Financial Freedom", PlannerStore.items.filter { it.type == "Investment" }.sumOf { it.amount }, PlannerStore.freedomTarget.value, Icons.Default.RocketLaunch) }
+        item { GoalSummaryCard("Emergency Fund", PlannerStore.items.filter { it.type == "Emergency" }.sumOf { it.amount }, PlannerStore.emergencyTarget.value, Icons.Default.HealthAndSafety) }
 
         if (goals.isEmpty()) {
             item {
                 ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
                     Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.FlagCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
-                        }
+                        Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Default.FlagCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) }
                         Text("No goals yet", fontWeight = FontWeight.Bold)
                         Text("Create your first goal to start tracking progress.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(onClick = { showAdd = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Create Goal") }
@@ -77,10 +60,7 @@ fun GoalsScreen() {
             }
         } else {
             items(goals, key = { it.id }) { goal ->
-                val target = goal.amount.coerceAtLeast(1.0)
-                GoalRow(goal.title, 0.0, target, goal.note, iconForGoal(goal.title)) {
-                    PlannerStore.deleteItem(goal.id)
-                }
+                GoalRow(goal.title, 0.0, goal.amount.coerceAtLeast(1.0), goal.note, iconForGoal(goal.title)) { PlannerStore.deleteItem(goal.id) }
             }
         }
 
@@ -96,10 +76,10 @@ fun GoalsScreen() {
         }
     }
 
-    if (showAdd) GoalDialog { title, amount, note ->
-        PlannerStore.addItem("Goal", title, amount, note)
-        showAdd = false
-    }
+    if (showAdd) GoalDialog(
+        onDismiss = { showAdd = false },
+        onSave = { title, amount, note -> PlannerStore.addItem("Goal", title, amount, note); showAdd = false }
+    )
 }
 
 @Composable
@@ -109,9 +89,7 @@ private fun GoalSummaryCard(title: String, current: Double, target: Double, icon
     ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-                }
+                Box(Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text("${inr(current)} of ${inr(target)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Text("${(progress * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -141,24 +119,14 @@ private fun GoalRow(title: String, current: Double, target: Double, note: String
 @Composable
 private fun TargetField(label: String, value: Double, save: (Double) -> Unit) {
     var text by remember(value) { mutableStateOf(if (value == 0.0) "" else value.toLong().toString()) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' } },
-        label = { Text(label) },
-        leadingIcon = { Icon(Icons.Default.CurrencyRupee, null) },
-        trailingIcon = { TextButton(onClick = { text.toDoubleOrNull()?.let(save) }) { Text("Save") } },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true
-    )
+    OutlinedTextField(text, { text = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text(label) }, leadingIcon = { Icon(Icons.Default.CurrencyRupee, null) }, trailingIcon = { TextButton(onClick = { text.toDoubleOrNull()?.let(save) }) { Text("Save") } }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 }
 
 @Composable
-private fun GoalDialog(onSave: (String, Double, String) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+private fun GoalDialog(onDismiss: () -> Unit, onSave: (String, Double, String) -> Unit) {
+    var title by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var note by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = onDismiss,
         title = { Text("Add financial goal") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(title, { title = it }, label = { Text("Goal name") }, leadingIcon = { Icon(Icons.Default.Flag, null) })
@@ -166,7 +134,7 @@ private fun GoalDialog(onSave: (String, Double, String) -> Unit) {
             OutlinedTextField(note, { note = it }, label = { Text("Note") })
         } },
         confirmButton = { Button(onClick = { val a = amount.toDoubleOrNull() ?: 0.0; if (title.isNotBlank() && a > 0) onSave(title, a, note) }) { Text("Save Goal") } },
-        dismissButton = { TextButton(onClick = { onSave("", 0.0, "") }) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
