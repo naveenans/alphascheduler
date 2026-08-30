@@ -1,5 +1,6 @@
 package com.alphaplanner.app.ui
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -10,6 +11,9 @@ import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.alphaplanner.app.data.PlannerStore
 import com.alphaplanner.app.ui.screens.*
 
 enum class AppTab(val label: String) { HOME("Home"), TRANSACTIONS("Transactions"), PLAN("Plan"), NEWS("News"), AI("AI") }
@@ -17,6 +21,7 @@ enum class AppTab(val label: String) { HOME("Home"), TRANSACTIONS("Transactions"
 @Composable
 fun AlphaPlannerApp() {
     var selected by remember { mutableStateOf(AppTab.HOME) }
+    val haptic = LocalHapticFeedback.current
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -30,7 +35,10 @@ fun AlphaPlannerApp() {
                     }
                     NavigationBarItem(
                         selected = selected == tab,
-                        onClick = { selected = tab },
+                        onClick = {
+                            if (PlannerStore.hapticsEnabled.value) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selected = tab
+                        },
                         icon = { Icon(icon, tab.label) },
                         label = { Text(tab.label) }
                     )
@@ -39,13 +47,19 @@ fun AlphaPlannerApp() {
         }
     ) { padding ->
         Surface(Modifier.padding(padding)) {
-            when (selected) {
-                AppTab.HOME -> DashboardScreen()
-                AppTab.TRANSACTIONS -> TransactionsScreen()
-                AppTab.PLAN -> PlanScreen()
-                AppTab.NEWS -> NewsScreen()
-                AppTab.AI -> AiCoachScreen()
-            }
+            if (PlannerStore.reduceMotion.value) AppContent(selected)
+            else Crossfade(targetState = selected, label = "tab") { AppContent(it) }
         }
+    }
+}
+
+@Composable
+private fun AppContent(tab: AppTab) {
+    when (tab) {
+        AppTab.HOME -> DashboardScreen()
+        AppTab.TRANSACTIONS -> TransactionsScreen()
+        AppTab.PLAN -> PlanScreen()
+        AppTab.NEWS -> NewsScreen()
+        AppTab.AI -> AiCoachScreen()
     }
 }
