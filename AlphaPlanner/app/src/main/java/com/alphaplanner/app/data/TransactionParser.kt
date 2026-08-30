@@ -7,7 +7,13 @@ import com.alphaplanner.app.model.TransactionType
 object TransactionParser {
     private val amountRegex = Regex("(?:₹|INR|Rs\\.?)[\\s:]*(\\d[\\d,]*(?:\\.\\d{1,2})?)", RegexOption.IGNORE_CASE)
 
-    fun parse(packageName: String, title: String?, text: String?): FinanceTransaction? {
+    fun parse(
+        packageName: String,
+        title: String?,
+        text: String?,
+        capturedAt: Long = System.currentTimeMillis(),
+        timestampLabel: String = "Captured now"
+    ): FinanceTransaction? {
         val body = listOfNotNull(title, text).joinToString(" ").trim()
         if (body.isBlank()) return null
         val lower = body.lowercase()
@@ -23,16 +29,15 @@ object TransactionParser {
         val bank = detectBank(lower, packageName)
         val category = classify(lower, type)
         val merchant = extractMerchant(body, bank)
-        val now = System.currentTimeMillis()
         return FinanceTransaction(
-            id = (now * 31L + body.hashCode()).let { if (it < 0) -it else it },
+            id = (capturedAt * 31L + body.hashCode()).let { if (it < 0) -it else it },
             merchant = merchant,
             bank = bank,
             amount = amount,
             type = type,
             category = category,
-            timestampLabel = "Captured now",
-            timestampEpoch = now
+            timestampLabel = timestampLabel,
+            timestampEpoch = capturedAt
         )
     }
 
