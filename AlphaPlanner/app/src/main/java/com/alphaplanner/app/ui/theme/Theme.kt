@@ -1,29 +1,33 @@
 package com.alphaplanner.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-enum class AlphaThemeMode { DARK_BLACK, LIGHT_WHITE, BLACK_WHITE, RED_BLACK, WHITE_BLUE }
-
-private val Green = Color(0xFF30E77A)
-private val DarkBg = Color(0xFF07110B)
-private val DarkCard = Color(0xFF101A14)
+private val DarkBlack = darkColorScheme(
+    primary = Color(0xFF39E58C), secondary = Color(0xFF7CE7B1), background = Color(0xFF050706), surface = Color(0xFF101411), onPrimary = Color.Black
+)
+private val LightWhite = lightColorScheme(
+    primary = Color(0xFF087F5B), secondary = Color(0xFF0B7285), background = Color(0xFFF8FAF9), surface = Color.White
+)
+private val BlackWhite = darkColorScheme(
+    primary = Color.White, secondary = Color(0xFFD0D0D0), background = Color.Black, surface = Color(0xFF111111), onPrimary = Color.Black
+)
+private val RedBlack = darkColorScheme(
+    primary = Color(0xFFFF4D4D), secondary = Color(0xFFFF8A80), background = Color(0xFF080404), surface = Color(0xFF160A0A)
+)
+private val WhiteBlue = lightColorScheme(
+    primary = Color(0xFF1769E0), secondary = Color(0xFF4E8DF5), background = Color(0xFFF7FAFF), surface = Color.White
+)
 
 @Composable
-fun AlphaPlannerTheme(
-    mode: AlphaThemeMode = if (isSystemInDarkTheme()) AlphaThemeMode.DARK_BLACK else AlphaThemeMode.LIGHT_WHITE,
-    content: @Composable () -> Unit
-) {
+fun AlphaPlannerTheme(mode: String = "Dark Black", content: @Composable () -> Unit) {
     val colors = when (mode) {
-        AlphaThemeMode.DARK_BLACK -> darkColorScheme(primary = Green, background = DarkBg, surface = DarkCard)
-        AlphaThemeMode.LIGHT_WHITE -> lightColorScheme(primary = Color(0xFF087A37))
-        AlphaThemeMode.BLACK_WHITE -> darkColorScheme(primary = Color.White, background = Color.Black, surface = Color(0xFF121212))
-        AlphaThemeMode.RED_BLACK -> darkColorScheme(primary = Color(0xFFFF4D4D), background = Color.Black, surface = Color(0xFF171010))
-        AlphaThemeMode.WHITE_BLUE -> lightColorScheme(primary = Color(0xFF2563EB), background = Color(0xFFF8FAFF))
+        "Light White" -> LightWhite
+        "Black & White" -> BlackWhite
+        "Red & Black" -> RedBlack
+        "White & Blue" -> WhiteBlue
+        else -> DarkBlack
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors, typography = Typography(), content = content)
 }
