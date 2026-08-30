@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.alphaplanner.app.data.FinanceStore
+import com.alphaplanner.app.data.PlannerStore
 import com.alphaplanner.app.model.FinanceCategory
 import com.alphaplanner.app.model.TransactionType
 import java.text.NumberFormat
@@ -21,17 +22,22 @@ fun DashboardScreen() {
     val txs = FinanceStore.transactions
     val income = txs.filter { it.type == TransactionType.CREDIT }.sumOf { it.amount }
     val expenses = txs.filter { it.type == TransactionType.DEBIT }.sumOf { it.amount }
-    val investments = txs.filter { it.category == FinanceCategory.INVESTMENT || it.category == FinanceCategory.NPS || it.category == FinanceCategory.PF }.sumOf { it.amount }
+    val txInvestments = txs.filter { it.category == FinanceCategory.INVESTMENT || it.category == FinanceCategory.NPS || it.category == FinanceCategory.PF }.sumOf { it.amount }
+    val plannedInvestments = PlannerStore.items.filter { it.type == "Investment" }.sumOf { it.amount }
+    val investments = txInvestments + plannedInvestments
     val savings = (income - expenses).coerceAtLeast(0.0)
     val savingsRate = if (income > 0) ((savings / income) * 100).toInt().coerceIn(0, 100) else 0
-    val health = (45 + savingsRate / 2 - if (expenses > income && income > 0) 15 else 0).coerceIn(0, 100)
+    val budget = PlannerStore.monthlyBudget.value
+    val budgetUse = if (budget > 0) (expenses / budget * 100).toInt() else 0
+    val health = (45 + savingsRate / 2 - if (budgetUse > 100) 15 else 0 + if (plannedInvestments > 0) 5 else 0).coerceIn(0, 100)
     val score by animateIntAsState(health, label = "score")
     val topExpense = txs.filter { it.type == TransactionType.DEBIT }.groupBy { it.category }.maxByOrNull { e -> e.value.sumOf { it.amount } }
+    val upcoming = PlannerStore.items.filter { (it.type == "Reminder" || it.type == "Receivable") && !it.done }.take(3)
 
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Text("Alpha Planner", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("v0.2 • Your money. Your plan. Your freedom.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("v1.0 • Plan Money. Build Wealth. Gain Freedom.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -48,30 +54,41 @@ fun DashboardScreen() {
                     Column {
                         Text("Financial Health", style = MaterialTheme.typography.titleMedium)
                         Text("$score / 100", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Savings rate $savingsRate% • $range view")
+                        Text("Savings $savingsRate% • Budget used $budgetUse% • $range")
                     }
                 }
             }
         }
         item { MetricGrid(income, expenses, savings, investments) }
         item {
-            ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
-                Text("Alpha Insight", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                if (topExpense != null) {
-                    val total = topExpense.value.sumOf { it.amount }
-                    Text("Your largest tracked expense category is ${topExpense.key.name.replace('_', ' ')} at ${formatInr(total)}. Review this category first when planning your next savings target.")
-                } else {
-                    Text("Enable transaction capture or add transactions manually to generate personalized spending insights.")
-                }
-            }}
+            ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Monthly Budget", fontWeight = FontWeight.Bold)
+                LinearProgressIndicator(progress = { if (budget > 0) (expenses / budget).coerceIn(0.0,1.0).toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
+                Text("${formatInr(expenses)} of ${formatInr(budget)}")
+            } }
         }
         item {
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
-                Text("Capture status", fontWeight = FontWeight.Bold)
-                Text("${txs.size} transactions stored locally on this device.")
-                Text("Use Transactions → Enable capture to let Alpha Planner classify supported bank and UPI notifications.")
-            }}
+                Text("Alpha AI Insight", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                if (topExpense != null) {
+                    val total = topExpense.value.sumOf { it.amount }
+                    Text("Largest tracked expense: ${topExpense.key.name.replace('_', ' ')} at ${formatInr(total)}. A 10% reduction would free ${formatInr(total * .10)} for savings or investment.")
+                } else Text("Enable transaction capture or add transactions manually to generate personalized insights.")
+            } }
+        }
+        item {
+            ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Upcoming", fontWeight = FontWeight.Bold)
+                if (upcoming.isEmpty()) Text("No unpaid reminders. Add EMI, premium, SIP or receivable reminders in Plan.")
+                upcoming.forEach { Text("${it.title} • ${formatInr(it.amount)} • ${it.type}") }
+            } }
+        }
+        item {
+            ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
+                Text("Privacy status", fontWeight = FontWeight.Bold)
+                Text("${txs.size} transactions stored locally. No bank password, UPI PIN, ATM PIN or CVV is collected.")
+            } }
         }
     }
 }
@@ -82,12 +99,10 @@ private fun MetricGrid(income: Double, expenses: Double, savings: Double, invest
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         metrics.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { (label, value) ->
-                    ElevatedCard(Modifier.weight(1f)) { Column(Modifier.padding(16.dp)) {
-                        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatInr(value), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    }}
-                }
+                row.forEach { (label, value) -> ElevatedCard(Modifier.weight(1f)) { Column(Modifier.padding(16.dp)) {
+                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatInr(value), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                } } }
             }
         }
     }
