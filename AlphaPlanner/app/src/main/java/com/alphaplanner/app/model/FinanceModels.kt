@@ -1,11 +1,12 @@
 package com.alphaplanner.app.model
 
-enum class TransactionType { CREDIT, DEBIT, INVESTMENT, TRANSFER }
+enum class TransactionType { CREDIT, DEBIT, INVESTMENT, TRANSFER, REFUND, REVERSAL }
 
 enum class FinanceCategory {
     SALARY, GROCERY, FUEL, MISCELLANEOUS, FOOD_DINING, INVESTMENT,
-    LIC, HEALTH_INSURANCE, VEHICLE, GOVERNMENT, NPS, PF, RENT,
-    UTILITIES, SHOPPING, MEDICAL, EDUCATION, EMI, SUBSCRIPTION
+    LIC, HEALTH_INSURANCE, TERM_INSURANCE, VEHICLE_INSURANCE, VEHICLE,
+    GOVERNMENT, NPS, PF, RENT, UTILITIES, SHOPPING, MEDICAL, EDUCATION,
+    EMI, SUBSCRIPTION, TRAVEL, ENTERTAINMENT, TAX, CHARITY, ATM, TRANSFER
 }
 
 data class FinanceTransaction(
@@ -15,7 +16,8 @@ data class FinanceTransaction(
     val amount: Double,
     val type: TransactionType,
     val category: FinanceCategory,
-    val timestampLabel: String
+    val timestampLabel: String,
+    val timestampEpoch: Long = System.currentTimeMillis()
 )
 
 data class DashboardSnapshot(
