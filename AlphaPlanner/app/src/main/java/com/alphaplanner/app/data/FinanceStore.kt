@@ -11,6 +11,7 @@ import org.json.JSONObject
 object FinanceStore {
     private const val PREFS = "alpha_planner_finance"
     private const val KEY = "transactions"
+    private const val MIGRATION_KEY = "clean_demo_migration_v1"
     private var appContext: Context? = null
     val transactions = mutableStateListOf<FinanceTransaction>()
 
@@ -18,7 +19,7 @@ object FinanceStore {
         if (appContext != null) return
         appContext = context.applicationContext
         load()
-        if (transactions.isEmpty()) transactions.addAll(DemoFinanceRepository.transactions)
+        removeLegacyDemoDataOnce()
     }
 
     fun add(tx: FinanceTransaction) {
@@ -38,6 +39,16 @@ object FinanceStore {
     fun csv(): String = buildString {
         append("Timestamp,Merchant,Bank,Type,Category,Amount\n")
         transactions.forEach { t -> append("${t.timestampEpoch},${t.merchant.replace(","," ")},${t.bank.replace(","," ")},${t.type},${t.category},${t.amount}\n") }
+    }
+
+    private fun removeLegacyDemoDataOnce() {
+        val ctx = appContext ?: return
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(MIGRATION_KEY, false)) return
+        val legacy = setOf("Salary", "Indian Oil", "Swiggy", "SIP")
+        val changed = transactions.removeAll { it.id in 1L..4L && it.merchant in legacy }
+        if (changed) persist()
+        prefs.edit().putBoolean(MIGRATION_KEY, true).apply()
     }
 
     private fun persist() {
