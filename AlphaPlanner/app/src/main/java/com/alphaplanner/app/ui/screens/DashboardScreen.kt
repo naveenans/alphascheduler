@@ -9,19 +9,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.alphaplanner.app.data.DemoFinanceRepository
+import com.alphaplanner.app.data.FinanceStore
+import com.alphaplanner.app.model.FinanceCategory
+import com.alphaplanner.app.model.TransactionType
 import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
 fun DashboardScreen() {
     var range by remember { mutableStateOf("Month") }
-    val d = DemoFinanceRepository.snapshot
-    val score by animateIntAsState(d.healthScore, label = "score")
+    val txs = FinanceStore.transactions
+    val income = txs.filter { it.type == TransactionType.CREDIT }.sumOf { it.amount }
+    val expenses = txs.filter { it.type == TransactionType.DEBIT }.sumOf { it.amount }
+    val investments = txs.filter { it.category == FinanceCategory.INVESTMENT || it.category == FinanceCategory.NPS || it.category == FinanceCategory.PF }.sumOf { it.amount }
+    val savings = (income - expenses).coerceAtLeast(0.0)
+    val savingsRate = if (income > 0) ((savings / income) * 100).toInt().coerceIn(0, 100) else 0
+    val health = (45 + savingsRate / 2 - if (expenses > income && income > 0) 15 else 0).coerceIn(0, 100)
+    val score by animateIntAsState(health, label = "score")
+    val topExpense = txs.filter { it.type == TransactionType.DEBIT }.groupBy { it.category }.maxByOrNull { e -> e.value.sumOf { it.amount } }
+
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Text("Alpha Planner", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Your money. Your plan. Your freedom.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("v0.2 • Your money. Your plan. Your freedom.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -38,24 +48,29 @@ fun DashboardScreen() {
                     Column {
                         Text("Financial Health", style = MaterialTheme.typography.titleMedium)
                         Text("$score / 100", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Savings rate ${d.savingsRate}% • $range view")
+                        Text("Savings rate $savingsRate% • $range view")
                     }
                 }
             }
         }
-        item { MetricGrid(d.income, d.expenses, d.savings, d.investments) }
+        item { MetricGrid(income, expenses, savings, investments) }
         item {
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
-                Text("Alpha AI Insight", fontWeight = FontWeight.Bold)
+                Text("Alpha Insight", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text("Dining is trending above your normal level. Cutting ₹2,000 this month would increase your savings rate without changing essential expenses.")
+                if (topExpense != null) {
+                    val total = topExpense.value.sumOf { it.amount }
+                    Text("Your largest tracked expense category is ${topExpense.key.name.replace('_', ' ')} at ${formatInr(total)}. Review this category first when planning your next savings target.")
+                } else {
+                    Text("Enable transaction capture or add transactions manually to generate personalized spending insights.")
+                }
             }}
         }
         item {
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
-                Text("Upcoming", fontWeight = FontWeight.Bold)
-                Text("Car EMI • ₹14,650 • in 3 days")
-                Text("LIC Premium • ₹7,800 • in 9 days")
+                Text("Capture status", fontWeight = FontWeight.Bold)
+                Text("${txs.size} transactions stored locally on this device.")
+                Text("Use Transactions → Enable capture to let Alpha Planner classify supported bank and UPI notifications.")
             }}
         }
     }
