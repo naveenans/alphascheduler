@@ -48,8 +48,8 @@ fun TransactionsScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Transactions", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Clean, searchable and automatically classified", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Expenses", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("Track every rupee • smart categorization", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedTextField(
@@ -59,7 +59,7 @@ fun TransactionsScreen() {
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, null) } },
-                placeholder = { Text("Search merchant, bank or category") },
+                placeholder = { Text("Search transactions") },
                 shape = RoundedCornerShape(18.dp)
             )
         }
@@ -73,12 +73,9 @@ fun TransactionsScreen() {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = { showAdd = true }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Add")
+                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Add Transaction")
                 }
-                OutlinedButton(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                    modifier = Modifier.weight(1f)
-                ) {
+                OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.NotificationsActive, null); Spacer(Modifier.width(6.dp)); Text("Capture")
                 }
             }
@@ -87,20 +84,11 @@ fun TransactionsScreen() {
         if (filtered.isEmpty()) {
             item {
                 ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(vertical = 44.dp, horizontal = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(Modifier.size(68.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.ReceiptLong, null, Modifier.size(34.dp), tint = MaterialTheme.colorScheme.primary)
-                        }
+                    Column(Modifier.fillMaxWidth().padding(vertical = 44.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.size(68.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(Icons.Default.AccountBalanceWallet, null, Modifier.size(34.dp), tint = MaterialTheme.colorScheme.primary) }
                         Text(if (query.isBlank()) "No transactions yet" else "No matches", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (query.isBlank()) "Add a transaction or enable notification capture to begin."
-                            else "Try a different search or filter.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(if (query.isBlank()) "Add your first transaction to get started." else "Try a different search or filter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (query.isBlank()) Button(onClick = { showAdd = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Add Transaction") }
                     }
                 }
             }
@@ -117,62 +105,37 @@ private fun TransactionRow(tx: com.alphaplanner.app.model.FinanceTransaction) {
     val positive = tx.type == TransactionType.CREDIT || tx.type == TransactionType.REFUND
     ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(categoryIcon(tx.category), null, tint = MaterialTheme.colorScheme.primary)
-            }
+            Box(Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(categoryIcon(tx.category), null, tint = MaterialTheme.colorScheme.primary) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(tx.merchant, fontWeight = FontWeight.Bold)
                 Text("${bankBadge(tx.bank)} • ${pretty(tx.category.name)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(tx.timestampLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(
-                (if (positive) "+" else "−") + NumberFormat.getCurrencyInstance(Locale("en", "IN")).format(tx.amount),
-                fontWeight = FontWeight.ExtraBold,
-                color = if (positive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-            )
+            Text((if (positive) "+" else "−") + NumberFormat.getCurrencyInstance(Locale("en", "IN")).format(tx.amount), fontWeight = FontWeight.ExtraBold, color = if (positive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
     }
 }
 
 @Composable
 private fun ManualTransactionDialog(onDismiss: () -> Unit) {
-    var merchant by remember { mutableStateOf("") }
-    var bank by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(TransactionType.DEBIT) }
-    var category by remember { mutableStateOf(FinanceCategory.MISCELLANEOUS) }
-
+    var merchant by remember { mutableStateOf("") }; var bank by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var type by remember { mutableStateOf(TransactionType.DEBIT) }; var category by remember { mutableStateOf(FinanceCategory.MISCELLANEOUS) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add transaction") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(merchant, { merchant = it }, label = { Text("Merchant / source") }, singleLine = true)
-                OutlinedTextField(bank, { bank = it }, label = { Text("Bank / wallet") }, singleLine = true)
-                OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Amount") }, singleLine = true)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf(TransactionType.DEBIT, TransactionType.CREDIT).forEachIndexed { index, option ->
-                        SegmentedButton(selected = type == option, onClick = { type = option }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(option.name) }
-                    }
-                }
-                Text("Category", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(FinanceCategory.GROCERY, FinanceCategory.FOOD_DINING, FinanceCategory.FUEL, FinanceCategory.SALARY).forEach { c ->
-                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(pretty(c.name).take(9)) })
-                    }
-                }
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(merchant, { merchant = it }, label = { Text("Merchant / source") }, singleLine = true)
+            OutlinedTextField(bank, { bank = it }, label = { Text("Bank / wallet") }, singleLine = true)
+            OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Amount") }, singleLine = true)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf(TransactionType.DEBIT, TransactionType.CREDIT).forEachIndexed { index, option -> SegmentedButton(selected = type == option, onClick = { type = option }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(option.name) } }
             }
-        },
-        confirmButton = {
-            Button(onClick = {
-                amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { FinanceStore.addManual(merchant, bank, it, type, category) }
-                onDismiss()
-            }) { Text("Save") }
-        },
+            Text("Category", fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(FinanceCategory.GROCERY, FinanceCategory.FOOD_DINING, FinanceCategory.FUEL, FinanceCategory.SALARY).forEach { c -> FilterChip(selected = category == c, onClick = { category = c }, label = { Text(pretty(c.name).take(9)) }) }
+            }
+        } },
+        confirmButton = { Button(onClick = { amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { FinanceStore.addManual(merchant, bank, it, type, category) }; onDismiss() }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -196,8 +159,7 @@ private fun categoryIcon(category: FinanceCategory) = when (category) {
 }
 
 private fun bankBadge(bank: String): String {
-    val cleaned = bank.trim()
-    if (cleaned.isBlank()) return "Manual"
+    val cleaned = bank.trim(); if (cleaned.isBlank()) return "Manual"
     val initials = cleaned.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
     return if (initials.isBlank()) cleaned.take(3).uppercase() else "$initials · $cleaned"
 }
