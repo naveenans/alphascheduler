@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.alphaplanner.app.data.FinanceStore
@@ -26,10 +27,15 @@ import com.alphaplanner.app.data.PlannerStore
 import com.alphaplanner.app.model.FinanceCategory
 import com.alphaplanner.app.model.TransactionType
 import java.text.NumberFormat
+import java.util.Calendar
 import java.util.Locale
 
 @Composable
-fun DashboardScreen() {
+fun DashboardScreen(
+    onOpenExpenses: () -> Unit = {},
+    onOpenGoals: () -> Unit = {},
+    onOpenAi: () -> Unit = {}
+) {
     var range by remember { mutableStateOf("Month") }
     val now = System.currentTimeMillis()
     val span = when (range) {
@@ -45,6 +51,7 @@ fun DashboardScreen() {
     val plannedInvestments = PlannerStore.items.filter { it.type == "Investment" }.sumOf { it.amount }
     val investments = txInvestments + plannedInvestments
     val savings = (income - expenses).coerceAtLeast(0.0)
+    val netWorth = savings + investments
     val savingsRate = if (income > 0) ((savings / income) * 100).toInt().coerceIn(0, 100) else 0
     val budget = PlannerStore.monthlyBudget.value
     val normalizedBudget = when (range) { "Day" -> budget / 30.0; "Week" -> budget / 4.3; "Year" -> budget * 12; else -> budget }
@@ -62,36 +69,34 @@ fun DashboardScreen() {
         txs.filter { it.type == TransactionType.DEBIT && it.timestampEpoch in start..end }.sumOf { it.amount }.toFloat()
     }
 
+    val reminders = PlannerStore.items.filter { (it.type == "Reminder" || it.type == "Receivable") && !it.done }
+        .sortedBy { if (it.dueEpoch > 0) it.dueEpoch else Long.MAX_VALUE }.take(3)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surface.copy(alpha = .55f)))
+            Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surface.copy(alpha = .58f)))
         ),
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Default.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary) }
-                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Alpha Planner", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                    Text("Your money, clearly visualized", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${greeting()}! 👋", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    Text("Welcome to Alpha Planner", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                AssistChip(onClick = {}, label = { Text("v1.1") }, leadingIcon = { Icon(Icons.Default.AutoGraph, null, Modifier.size(16.dp)) })
+                IconButton(onClick = {}) {
+                    BadgedBox(badge = { if (reminders.isNotEmpty()) Badge { Text(reminders.size.toString()) } }) {
+                        Icon(Icons.Default.NotificationsNone, "Reminders")
+                    }
+                }
             }
         }
 
         item {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("Day", "Week", "Month", "Year").forEachIndexed { index, label ->
-                    SegmentedButton(
-                        selected = range == label,
-                        onClick = { range = label },
-                        shape = SegmentedButtonDefaults.itemShape(index, 4)
-                    ) { Text(label) }
+                    SegmentedButton(selected = range == label, onClick = { range = label }, shape = SegmentedButtonDefaults.itemShape(index, 4)) { Text(label) }
                 }
             }
         }
@@ -99,17 +104,12 @@ fun DashboardScreen() {
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HealthRing(score = health)
-                    Spacer(Modifier.width(18.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Financial health", style = MaterialTheme.typography.titleMedium)
-                        Text(if (txs.isEmpty()) "Start tracking" else "$health / 100", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                        Text(
-                            if (txs.isEmpty()) "Add your first transaction to activate insights."
-                            else "Savings rate $savingsRate% • $range view",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Financial Health Score", style = MaterialTheme.typography.titleMedium)
+                        Text(if (txs.isEmpty()) "0 / 100" else "$health / 100", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold)
+                        Text(if (txs.isEmpty()) "Add your first transaction to begin" else healthMessage(health), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                     }
+                    HealthRing(score = health)
                 }
             }
         }
@@ -118,16 +118,26 @@ fun DashboardScreen() {
 
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text("Expense trend", fontWeight = FontWeight.Bold)
-                            Text("Last 7 days in selected window", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Default.ShowChart, null, tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Savings Rate", fontWeight = FontWeight.Bold)
+                        Text("Target 20%", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
-                    if (dailySpend.any { it > 0f }) SpendingLineChart(dailySpend)
-                    else EmptyMiniState("No spending data yet", Icons.Default.QueryStats)
+                    Text("$savingsRate%", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    val progress by animateFloatAsState((savingsRate / 100f).coerceIn(0f, 1f), label = "savings")
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape))
+                }
+            }
+        }
+
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column { Text("Net Worth", fontWeight = FontWeight.Bold); Text(formatInr(netWorth), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary) }
+                        Icon(Icons.Default.AutoGraph, null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                    if (dailySpend.any { it > 0f }) SpendingLineChart(dailySpend) else EmptyMiniState("Your net-worth trend will appear as data grows", Icons.Default.ShowChart)
                 }
             }
         }
@@ -135,12 +145,20 @@ fun DashboardScreen() {
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.BarChart, null, tint = MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Top spending categories", fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column { Text("Expense Overview", fontWeight = FontWeight.Bold); Text("$range spending", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(formatInr(expenses), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
                     }
-                    if (topCategories.isEmpty()) EmptyMiniState("Categories appear after you spend", Icons.Default.Category)
+                    if (dailySpend.any { it > 0f }) SpendingLineChart(dailySpend) else EmptyMiniState("No expenses yet", Icons.Default.QueryStats)
+                }
+            }
+        }
+
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Top Categories", fontWeight = FontWeight.Bold)
+                    if (topCategories.isEmpty()) EmptyMiniState("Add your first expense to see category breakdown", Icons.Default.Category)
                     else {
                         val max = topCategories.maxOf { it.value }.coerceAtLeast(1.0)
                         topCategories.forEach { entry -> CategoryBar(entry.key.name.replace('_', ' '), entry.value, (entry.value / max).toFloat()) }
@@ -151,14 +169,13 @@ fun DashboardScreen() {
 
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Savings progress", fontWeight = FontWeight.Bold)
-                        Text("$savingsRate%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Quick Actions", fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        QuickAction("Expense", Icons.Default.ReceiptLong, onOpenExpenses, Modifier.weight(1f))
+                        QuickAction("Goal", Icons.Default.FlagCircle, onOpenGoals, Modifier.weight(1f))
+                        QuickAction("AI Coach", Icons.Default.AutoAwesome, onOpenAi, Modifier.weight(1f))
                     }
-                    val progress by animateFloatAsState((savingsRate / 100f).coerceIn(0f, 1f), label = "savings")
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape))
-                    Text("Target guide: 20%+ savings rate", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -166,15 +183,33 @@ fun DashboardScreen() {
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Budget pace", fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Upcoming Reminders", fontWeight = FontWeight.Bold)
+                        Text("${reminders.size} active", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (reminders.isEmpty()) EmptyMiniState("No upcoming reminders — you're all caught up", Icons.Default.EventAvailable)
+                    else reminders.forEach { r ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary) }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) { Text(r.title, fontWeight = FontWeight.SemiBold); Text("${r.type} • ${formatInr(r.amount)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Budget Tracking", fontWeight = FontWeight.Bold)
                     if (normalizedBudget > 0) {
                         val fraction = (expenses / normalizedBudget).coerceIn(0.0, 1.0).toFloat()
                         val animated by animateFloatAsState(fraction, label = "budget")
                         LinearProgressIndicator(progress = { animated }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape))
                         Text("${formatInr(expenses)} of ${formatInr(normalizedBudget)} • ${budgetUse}% used")
-                    } else {
-                        EmptyMiniState("Set a budget in Plan to activate this meter", Icons.Default.Speed)
-                    }
+                    } else EmptyMiniState("Set your first budget in Goals", Icons.Default.Speed)
                 }
             }
         }
@@ -182,27 +217,15 @@ fun DashboardScreen() {
         item {
             ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.tertiary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Alpha insight", fontWeight = FontWeight.Bold)
-                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.tertiary); Spacer(Modifier.width(8.dp)); Text("Alpha AI Insight", fontWeight = FontWeight.Bold) }
                     val top = topCategories.firstOrNull()
-                    Text(
-                        when {
-                            txs.isEmpty() -> "Your dashboard is clean. Add or capture transactions to generate personalized insights."
-                            top != null -> "${top.key.name.replace('_', ' ')} is your largest $range expense at ${formatInr(top.value)}. Cutting 10% would free ${formatInr(top.value * .10)}."
-                            else -> "Your tracked cash flow is ready for review."
-                        }
-                    )
+                    Text(when {
+                        txs.isEmpty() -> "Your dashboard is clean. Add or capture transactions to unlock personalized financial insights."
+                        top != null -> "${top.key.name.replace('_', ' ')} is your largest $range expense at ${formatInr(top.value)}. Cutting 10% could free ${formatInr(top.value * .10)} for savings or investment."
+                        else -> "Your tracked cash flow is ready for review."
+                    })
+                    TextButton(onClick = onOpenAi) { Text("Chat with Alpha AI"); Spacer(Modifier.width(6.dp)); Icon(Icons.Default.ArrowForward, null, Modifier.size(18.dp)) }
                 }
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatusCard("Capture", "${FinanceStore.transactions.size} stored", Icons.Default.NotificationsActive, Modifier.weight(1f))
-                StatusCard("Privacy", "Local-first", Icons.Default.Shield, Modifier.weight(1f))
             }
         }
     }
@@ -213,20 +236,20 @@ private fun HealthRing(score: Int) {
     val value by animateFloatAsState((score / 100f).coerceIn(0f, 1f), label = "healthRing")
     val primary = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceVariant
-    Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            drawArc(track, -90f, 360f, false, style = Stroke(10.dp.toPx(), cap = StrokeCap.Round))
-            drawArc(primary, -90f, 360f * value, false, style = Stroke(10.dp.toPx(), cap = StrokeCap.Round))
+            drawArc(track, -90f, 360f, false, style = Stroke(11.dp.toPx(), cap = StrokeCap.Round))
+            drawArc(primary, -90f, 360f * value, false, style = Stroke(11.dp.toPx(), cap = StrokeCap.Round))
         }
-        Icon(if (score > 0) Icons.Default.Favorite else Icons.Default.AddChart, null, tint = primary)
+        Icon(if (score > 0) Icons.Default.Favorite else Icons.Default.AddChart, null, tint = primary, modifier = Modifier.size(30.dp))
     }
 }
 
 @Composable
 private fun MetricGrid(income: Double, expenses: Double, savings: Double, investments: Double) {
     val metrics = listOf(
-        Triple("Income", income, Icons.Default.SouthWest),
-        Triple("Expenses", expenses, Icons.Default.NorthEast),
+        Triple("Income", income, Icons.Default.AccountBalance),
+        Triple("Expenses", expenses, Icons.Default.ReceiptLong),
         Triple("Savings", savings, Icons.Default.Savings),
         Triple("Investments", investments, Icons.Default.TrendingUp)
     )
@@ -236,11 +259,10 @@ private fun MetricGrid(income: Double, expenses: Double, savings: Double, invest
                 row.forEach { (label, value, icon) ->
                     ElevatedCard(Modifier.weight(1f), shape = RoundedCornerShape(22.dp)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(Modifier.size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                                Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                            }
+                            Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.primary) }
                             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             Text(formatInr(value), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                            Text(if (label == "Investments") "Total value" else "This ${labelForPeriod()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -250,29 +272,31 @@ private fun MetricGrid(income: Double, expenses: Double, savings: Double, invest
 }
 
 @Composable
-private fun SpendingLineChart(values: List<Float>) {
-    val progress by animateFloatAsState(1f, label = "line")
-    val lineColor = MaterialTheme.colorScheme.primary
-    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = .25f)
-    Canvas(Modifier.fillMaxWidth().height(130.dp)) {
-        repeat(4) { i ->
-            val y = size.height * i / 3f
-            drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+private fun QuickAction(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+        Column(Modifier.padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Box(Modifier.size(38.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+@Composable
+private fun SpendingLineChart(values: List<Float>) {
+    val lineColor = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.tertiary
+    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = .18f)
+    Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+        repeat(4) { i -> val y = size.height * i / 3f; drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f) }
         val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
         val step = if (values.size > 1) size.width / (values.size - 1) else size.width
         val path = Path()
         values.forEachIndexed { index, value ->
-            val x = step * index
-            val y = size.height - (value / max) * size.height * .86f
+            val x = step * index; val y = size.height - (value / max) * size.height * .84f
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        drawPath(path, lineColor.copy(alpha = progress), style = Stroke(width = 4f, cap = StrokeCap.Round))
-        values.forEachIndexed { index, value ->
-            val x = step * index
-            val y = size.height - (value / max) * size.height * .86f
-            drawCircle(lineColor, 5f, Offset(x, y))
-        }
+        drawPath(path, lineColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
+        values.forEachIndexed { index, value -> val x = step * index; val y = size.height - (value / max) * size.height * .84f; drawCircle(if (index == values.lastIndex) secondary else lineColor, 5f, Offset(x, y)) }
     }
 }
 
@@ -280,37 +304,20 @@ private fun SpendingLineChart(values: List<Float>) {
 private fun CategoryBar(label: String, amount: Double, fraction: Float) {
     val animated by animateFloatAsState(fraction.coerceIn(0f, 1f), label = label)
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label.lowercase().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyMedium)
-            Text(formatInr(amount), fontWeight = FontWeight.SemiBold)
-        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label.lowercase().replaceFirstChar { it.uppercase() }); Text(formatInr(amount), fontWeight = FontWeight.SemiBold) }
         LinearProgressIndicator(progress = { animated }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape))
     }
 }
 
 @Composable
-private fun EmptyMiniState(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun EmptyMiniState(text: String, icon: ImageVector) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Spacer(Modifier.width(10.dp)); Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-@Composable
-private fun StatusCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
-    ElevatedCard(modifier, shape = RoundedCornerShape(20.dp)) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(title, fontWeight = FontWeight.Bold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
+private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) { in 5..11 -> "Good Morning"; in 12..16 -> "Good Afternoon"; else -> "Good Evening" }
+private fun healthMessage(score: Int): String = when { score >= 80 -> "Great going!"; score >= 60 -> "Good progress"; score >= 40 -> "Building momentum"; else -> "Let's improve together" }
+private fun labelForPeriod(): String = "period"
 private fun formatInr(value: Double): String = NumberFormat.getCurrencyInstance(Locale("en", "IN")).format(value)
