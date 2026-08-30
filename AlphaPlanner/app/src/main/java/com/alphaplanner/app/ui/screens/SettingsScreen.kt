@@ -1,7 +1,11 @@
 package com.alphaplanner.app.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,7 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,14 +22,31 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.alphaplanner.app.BuildConfig
 import com.alphaplanner.app.data.FinanceStore
 import com.alphaplanner.app.data.PlannerStore
+import com.alphaplanner.app.data.SmsTransactionImporter
 
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
     val themes = listOf("Dark Black", "Light White", "Black & White", "Red & Black", "White & Blue")
+    var importMessage by remember { mutableStateOf<String?>(null) }
+
+    fun runImport() {
+        val result = SmsTransactionImporter.importLast10Days(context)
+        importMessage = if (result.permissionGranted) {
+            "Imported ${result.imported} transaction(s) from ${result.scanned} SMS checked."
+        } else {
+            "SMS permission is required for the 10-day history import."
+        }
+    }
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) runImport() else importMessage = "SMS permission was not granted. Notification capture still works separately."
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surface.copy(alpha = .45f)))),
         contentPadding = PaddingValues(18.dp),
@@ -35,6 +56,50 @@ fun SettingsScreen() {
             Column {
                 Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                 Text("Customize your Alpha Planner experience", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingHeader("Transaction setup", Icons.Default.SyncAlt)
+                    Text(
+                        "Import up to the previous 10 days from SMS once for initial history, then use Android notification access for ongoing transaction capture.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) runImport()
+                            else smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Sms, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Import last 10 days from SMS")
+                    }
+                    OutlinedButton(
+                        onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.NotificationsActive, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Enable ongoing notification capture")
+                    }
+                    importMessage?.let {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .45f),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(it, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Text(
+                        "Only messages that look like financial transactions are converted into app entries. OTP and verification messages are ignored.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
