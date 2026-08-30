@@ -16,15 +16,20 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import com.alphaplanner.app.data.PlannerStore
 import com.alphaplanner.app.ui.screens.*
 
-enum class AppTab(val label: String) { HOME("Home"), TRANSACTIONS("Transactions"), PLAN("Plan"), NEWS("News"), AI("AI") }
+enum class AppTab(val label: String) { HOME("Home"), TRANSACTIONS("Transactions"), PLAN("Plan"), NEWS("News"), AI("AI Coach") }
 
 @Composable
 fun AlphaPlannerApp() {
     var selected by remember { mutableStateOf(AppTab.HOME) }
     val haptic = LocalHapticFeedback.current
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = NavigationBarDefaults.Elevation
+            ) {
                 AppTab.entries.forEach { tab ->
                     val icon = when (tab) {
                         AppTab.HOME -> Icons.Default.Home
@@ -40,15 +45,21 @@ fun AlphaPlannerApp() {
                             selected = tab
                         },
                         icon = { Icon(icon, tab.label) },
-                        label = { Text(tab.label) }
+                        label = { Text(tab.label) },
+                        alwaysShowLabel = selected == tab,
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary
+                        )
                     )
                 }
             }
         }
     ) { padding ->
-        Surface(Modifier.padding(padding)) {
+        Surface(Modifier.padding(padding), color = MaterialTheme.colorScheme.background) {
             if (PlannerStore.reduceMotion.value) AppContent(selected)
-            else Crossfade(targetState = selected, label = "tab") { AppContent(it) }
+            else Crossfade(targetState = selected, label = "tabTransition") { AppContent(it) }
         }
     }
 }
