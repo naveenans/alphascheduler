@@ -8,6 +8,7 @@ import org.json.JSONObject
 
 object PlannerStore {
     private const val PREFS = "alpha_planner_settings"
+    private const val CLEAN_DEFAULTS_KEY = "clean_defaults_v1"
     private var context: Context? = null
 
     data class PlanItem(
@@ -24,9 +25,9 @@ object PlannerStore {
     val biometricEnabled = mutableStateOf(false)
     val hapticsEnabled = mutableStateOf(true)
     val reduceMotion = mutableStateOf(false)
-    val monthlyBudget = mutableStateOf(50000.0)
-    val emergencyTarget = mutableStateOf(300000.0)
-    val freedomTarget = mutableStateOf(15000000.0)
+    val monthlyBudget = mutableStateOf(0.0)
+    val emergencyTarget = mutableStateOf(0.0)
+    val freedomTarget = mutableStateOf(0.0)
     val items = mutableStateListOf<PlanItem>()
 
     fun init(ctx: Context) {
@@ -37,10 +38,11 @@ object PlannerStore {
         biometricEnabled.value = p.getBoolean("biometric", false)
         hapticsEnabled.value = p.getBoolean("haptics", true)
         reduceMotion.value = p.getBoolean("reduceMotion", false)
-        monthlyBudget.value = p.getFloat("budget", 50000f).toDouble()
-        emergencyTarget.value = p.getFloat("emergency", 300000f).toDouble()
-        freedomTarget.value = p.getFloat("freedom", 15000000f).toDouble()
+        monthlyBudget.value = p.getFloat("budget", 0f).toDouble()
+        emergencyTarget.value = p.getFloat("emergency", 0f).toDouble()
+        freedomTarget.value = p.getFloat("freedom", 0f).toDouble()
         loadItems(p.getString("items", null))
+        cleanLegacyDefaultsOnce(p)
     }
 
     fun setTheme(v: String) { themeMode.value = v; save() }
@@ -63,6 +65,15 @@ object PlannerStore {
     }
 
     fun deleteItem(id: Long) { items.removeAll { it.id == id }; save() }
+
+    private fun cleanLegacyDefaultsOnce(p: android.content.SharedPreferences) {
+        if (p.getBoolean(CLEAN_DEFAULTS_KEY, false)) return
+        if (monthlyBudget.value == 50000.0) monthlyBudget.value = 0.0
+        if (emergencyTarget.value == 300000.0) emergencyTarget.value = 0.0
+        if (freedomTarget.value == 15000000.0) freedomTarget.value = 0.0
+        p.edit().putBoolean(CLEAN_DEFAULTS_KEY, true).apply()
+        save()
+    }
 
     private fun save() {
         val p = context?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
