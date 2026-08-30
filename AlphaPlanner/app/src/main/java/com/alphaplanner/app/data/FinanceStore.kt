@@ -7,6 +7,7 @@ import com.alphaplanner.app.model.FinanceTransaction
 import com.alphaplanner.app.model.TransactionType
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 
 object FinanceStore {
     private const val PREFS = "alpha_planner_finance"
@@ -23,8 +24,17 @@ object FinanceStore {
     }
 
     fun add(tx: FinanceTransaction) {
-        if (transactions.any { it.id == tx.id }) return
-        transactions.add(0, tx)
+        val duplicate = transactions.any { existing ->
+            existing.id == tx.id || (
+                existing.amount == tx.amount &&
+                existing.type == tx.type &&
+                existing.bank.equals(tx.bank, true) &&
+                abs(existing.timestampEpoch - tx.timestampEpoch) <= 90_000L
+            )
+        }
+        if (duplicate) return
+        transactions.add(tx)
+        transactions.sortByDescending { it.timestampEpoch }
         persist()
     }
 
@@ -74,6 +84,7 @@ object FinanceStore {
                     timestampLabel = o.optString("timestampLabel", "Saved"), timestampEpoch = o.optLong("timestampEpoch", o.getLong("id"))
                 ))
             }
+            transactions.sortByDescending { it.timestampEpoch }
         }
     }
 }
