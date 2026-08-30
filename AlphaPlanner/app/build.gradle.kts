@@ -11,8 +11,8 @@ android {
         applicationId = "com.alphaplanner.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 10
+        versionName = "1.0.0"
     }
 
     buildFeatures {
@@ -38,6 +38,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.2")
     implementation("androidx.navigation:navigation-compose:2.9.3")
+    implementation("androidx.biometric:biometric:1.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
