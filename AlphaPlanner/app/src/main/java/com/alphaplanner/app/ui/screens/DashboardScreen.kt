@@ -19,8 +19,15 @@ import java.util.Locale
 @Composable
 fun DashboardScreen() {
     var range by remember { mutableStateOf("Month") }
-    val txs = FinanceStore.transactions
-    val income = txs.filter { it.type == TransactionType.CREDIT }.sumOf { it.amount }
+    val now = System.currentTimeMillis()
+    val span = when (range) {
+        "Day" -> 86_400_000L
+        "Week" -> 7L * 86_400_000L
+        "Year" -> 365L * 86_400_000L
+        else -> 30L * 86_400_000L
+    }
+    val txs = FinanceStore.transactions.filter { it.timestampEpoch >= now - span }
+    val income = txs.filter { it.type == TransactionType.CREDIT || it.type == TransactionType.REFUND }.sumOf { it.amount }
     val expenses = txs.filter { it.type == TransactionType.DEBIT }.sumOf { it.amount }
     val txInvestments = txs.filter { it.category == FinanceCategory.INVESTMENT || it.category == FinanceCategory.NPS || it.category == FinanceCategory.PF }.sumOf { it.amount }
     val plannedInvestments = PlannerStore.items.filter { it.type == "Investment" }.sumOf { it.amount }
@@ -28,7 +35,8 @@ fun DashboardScreen() {
     val savings = (income - expenses).coerceAtLeast(0.0)
     val savingsRate = if (income > 0) ((savings / income) * 100).toInt().coerceIn(0, 100) else 0
     val budget = PlannerStore.monthlyBudget.value
-    val budgetUse = if (budget > 0) (expenses / budget * 100).toInt() else 0
+    val normalizedBudget = when (range) { "Day" -> budget / 30.0; "Week" -> budget / 4.3; "Year" -> budget * 12; else -> budget }
+    val budgetUse = if (normalizedBudget > 0) (expenses / normalizedBudget * 100).toInt() else 0
     val health = (45 + savingsRate / 2 - if (budgetUse > 100) 15 else 0 + if (plannedInvestments > 0) 5 else 0).coerceIn(0, 100)
     val score by animateIntAsState(health, label = "score")
     val topExpense = txs.filter { it.type == TransactionType.DEBIT }.groupBy { it.category }.maxByOrNull { e -> e.value.sumOf { it.amount } }
@@ -62,9 +70,9 @@ fun DashboardScreen() {
         item { MetricGrid(income, expenses, savings, investments) }
         item {
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Monthly Budget", fontWeight = FontWeight.Bold)
-                LinearProgressIndicator(progress = { if (budget > 0) (expenses / budget).coerceIn(0.0,1.0).toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
-                Text("${formatInr(expenses)} of ${formatInr(budget)}")
+                Text("$range Budget Pace", fontWeight = FontWeight.Bold)
+                LinearProgressIndicator(progress = { if (normalizedBudget > 0) (expenses / normalizedBudget).coerceIn(0.0,1.0).toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
+                Text("${formatInr(expenses)} of ${formatInr(normalizedBudget)}")
             } }
         }
         item {
@@ -73,8 +81,8 @@ fun DashboardScreen() {
                 Spacer(Modifier.height(8.dp))
                 if (topExpense != null) {
                     val total = topExpense.value.sumOf { it.amount }
-                    Text("Largest tracked expense: ${topExpense.key.name.replace('_', ' ')} at ${formatInr(total)}. A 10% reduction would free ${formatInr(total * .10)} for savings or investment.")
-                } else Text("Enable transaction capture or add transactions manually to generate personalized insights.")
+                    Text("Largest $range expense: ${topExpense.key.name.replace('_', ' ')} at ${formatInr(total)}. A 10% reduction would free ${formatInr(total * .10)}.")
+                } else Text("No transactions in this $range window. Enable capture or add one manually.")
             } }
         }
         item {
@@ -87,7 +95,7 @@ fun DashboardScreen() {
         item {
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
                 Text("Privacy status", fontWeight = FontWeight.Bold)
-                Text("${txs.size} transactions stored locally. No bank password, UPI PIN, ATM PIN or CVV is collected.")
+                Text("${FinanceStore.transactions.size} total transactions stored locally. No bank password, UPI PIN, ATM PIN or CVV is collected.")
             } }
         }
     }
