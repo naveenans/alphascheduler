@@ -28,18 +28,25 @@ object FinanceStore {
     }
 
     fun addManual(merchant: String, bank: String, amount: Double, type: TransactionType, category: FinanceCategory) {
-        add(FinanceTransaction(System.currentTimeMillis(), merchant.ifBlank { "Manual entry" }, bank.ifBlank { "Manual" }, amount, type, category, "Just now"))
+        val now = System.currentTimeMillis()
+        add(FinanceTransaction(now, merchant.ifBlank { "Manual entry" }, bank.ifBlank { "Manual" }, amount, type, category, "Just now", now))
+    }
+
+    fun delete(id: Long) { transactions.removeAll { it.id == id }; persist() }
+    fun clearAll() { transactions.clear(); persist() }
+
+    fun csv(): String = buildString {
+        append("Timestamp,Merchant,Bank,Type,Category,Amount\n")
+        transactions.forEach { t -> append("${t.timestampEpoch},${t.merchant.replace(","," ")},${t.bank.replace(","," ")},${t.type},${t.category},${t.amount}\n") }
     }
 
     private fun persist() {
         val ctx = appContext ?: return
         val array = JSONArray()
-        transactions.forEach { tx ->
-            array.put(JSONObject().apply {
-                put("id", tx.id); put("merchant", tx.merchant); put("bank", tx.bank); put("amount", tx.amount)
-                put("type", tx.type.name); put("category", tx.category.name); put("timestampLabel", tx.timestampLabel)
-            })
-        }
+        transactions.forEach { tx -> array.put(JSONObject().apply {
+            put("id", tx.id); put("merchant", tx.merchant); put("bank", tx.bank); put("amount", tx.amount)
+            put("type", tx.type.name); put("category", tx.category.name); put("timestampLabel", tx.timestampLabel); put("timestampEpoch", tx.timestampEpoch)
+        }) }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
     }
 
@@ -52,7 +59,8 @@ object FinanceStore {
                 val o = array.getJSONObject(i)
                 transactions.add(FinanceTransaction(
                     id = o.getLong("id"), merchant = o.getString("merchant"), bank = o.getString("bank"), amount = o.getDouble("amount"),
-                    type = TransactionType.valueOf(o.getString("type")), category = FinanceCategory.valueOf(o.getString("category")), timestampLabel = o.getString("timestampLabel")
+                    type = TransactionType.valueOf(o.getString("type")), category = FinanceCategory.valueOf(o.getString("category")),
+                    timestampLabel = o.optString("timestampLabel", "Saved"), timestampEpoch = o.optLong("timestampEpoch", o.getLong("id"))
                 ))
             }
         }
