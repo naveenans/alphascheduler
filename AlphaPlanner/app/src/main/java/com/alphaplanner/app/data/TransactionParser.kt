@@ -11,61 +11,88 @@ object TransactionParser {
         val body = listOfNotNull(title, text).joinToString(" ").trim()
         if (body.isBlank()) return null
         val lower = body.lowercase()
+        if (listOf("otp", "one time password", "verification code").any(lower::contains)) return null
         val amount = amountRegex.find(body)?.groupValues?.getOrNull(1)?.replace(",", "")?.toDoubleOrNull() ?: return null
         val type = when {
-            listOf("credited", "received", "deposited", "refund", "salary").any(lower::contains) -> TransactionType.CREDIT
-            listOf("debited", "spent", "paid", "purchase", "withdrawn", "sent").any(lower::contains) -> TransactionType.DEBIT
+            listOf("reversal", "reversed").any(lower::contains) -> TransactionType.REVERSAL
+            listOf("refund", "refunded").any(lower::contains) -> TransactionType.REFUND
+            listOf("credited", "received", "deposited", "salary credit").any(lower::contains) -> TransactionType.CREDIT
+            listOf("debited", "spent", "paid", "purchase", "withdrawn", "sent", "txn of").any(lower::contains) -> TransactionType.DEBIT
             else -> return null
         }
-        val bank = when {
-            lower.contains("hdfc") -> "HDFC Bank"
-            lower.contains("icici") -> "ICICI Bank"
-            lower.contains("sbi") || lower.contains("state bank") -> "SBI"
-            lower.contains("axis") -> "Axis Bank"
-            lower.contains("kotak") -> "Kotak Mahindra Bank"
-            lower.contains("indian bank") -> "Indian Bank"
-            lower.contains("canara") -> "Canara Bank"
-            lower.contains("phonepe") -> "PhonePe"
-            lower.contains("gpay") || lower.contains("google pay") -> "Google Pay"
-            lower.contains("paytm") -> "Paytm"
-            else -> packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
-        }
+        val bank = detectBank(lower, packageName)
         val category = classify(lower, type)
         val merchant = extractMerchant(body, bank)
+        val now = System.currentTimeMillis()
         return FinanceTransaction(
-            id = (System.currentTimeMillis() * 31L + body.hashCode()).let { if (it < 0) -it else it },
+            id = (now * 31L + body.hashCode()).let { if (it < 0) -it else it },
             merchant = merchant,
             bank = bank,
             amount = amount,
             type = type,
             category = category,
-            timestampLabel = "Captured now"
+            timestampLabel = "Captured now",
+            timestampEpoch = now
         )
     }
 
+    private fun detectBank(text: String, packageName: String): String = when {
+        "hdfc" in text -> "HDFC Bank"
+        "icici" in text -> "ICICI Bank"
+        "sbi" in text || "state bank" in text -> "SBI"
+        "axis" in text -> "Axis Bank"
+        "kotak" in text -> "Kotak Mahindra Bank"
+        "indian bank" in text -> "Indian Bank"
+        "canara" in text -> "Canara Bank"
+        "union bank" in text -> "Union Bank of India"
+        "bank of baroda" in text || "bob" in text -> "Bank of Baroda"
+        "pnb" in text || "punjab national" in text -> "Punjab National Bank"
+        "idfc" in text -> "IDFC FIRST Bank"
+        "indusind" in text -> "IndusInd Bank"
+        "yes bank" in text -> "YES Bank"
+        "federal bank" in text -> "Federal Bank"
+        "rbl" in text -> "RBL Bank"
+        "bank of india" in text -> "Bank of India"
+        "phonepe" in text -> "PhonePe"
+        "gpay" in text || "google pay" in text -> "Google Pay"
+        "paytm" in text -> "Paytm"
+        "amazon pay" in text -> "Amazon Pay"
+        else -> packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+    }
+
     private fun classify(text: String, type: TransactionType): FinanceCategory = when {
-        text.contains("salary") -> FinanceCategory.SALARY
-        text.contains("nps") -> FinanceCategory.NPS
-        text.contains("provident fund") || text.contains(" epf") || text.contains(" pf ") -> FinanceCategory.PF
-        text.contains("lic") -> FinanceCategory.LIC
-        text.contains("insurance") -> FinanceCategory.HEALTH_INSURANCE
-        text.contains("emi") || text.contains("loan") -> FinanceCategory.EMI
-        listOf("petrol", "diesel", "fuel", "hpcl", "bpcl", "iocl").any(text::contains) -> FinanceCategory.FUEL
-        listOf("swiggy", "zomato", "restaurant", "cafe", "hotel").any(text::contains) -> FinanceCategory.FOOD_DINING
-        listOf("grocery", "supermarket", "mart", "bigbasket", "zepto", "blinkit").any(text::contains) -> FinanceCategory.GROCERY
-        listOf("amazon", "flipkart", "myntra", "shopping").any(text::contains) -> FinanceCategory.SHOPPING
-        listOf("electricity", "water bill", "gas bill", "recharge", "broadband").any(text::contains) -> FinanceCategory.UTILITIES
-        listOf("mutual fund", "sip", "zerodha", "groww", "investment").any(text::contains) -> FinanceCategory.INVESTMENT
-        type == TransactionType.CREDIT -> FinanceCategory.MISCELLANEOUS
+        "salary" in text || "payroll" in text -> FinanceCategory.SALARY
+        "nps" in text -> FinanceCategory.NPS
+        "provident fund" in text || " epf" in text || " pf " in text -> FinanceCategory.PF
+        "income tax" in text || "gst" in text || "tax payment" in text -> FinanceCategory.TAX
+        "lic" in text -> FinanceCategory.LIC
+        "term insurance" in text -> FinanceCategory.TERM_INSURANCE
+        "vehicle insurance" in text || "motor insurance" in text -> FinanceCategory.VEHICLE_INSURANCE
+        "insurance" in text -> FinanceCategory.HEALTH_INSURANCE
+        "emi" in text || "loan" in text -> FinanceCategory.EMI
+        listOf("petrol", "diesel", "fuel", "hpcl", "bpcl", "iocl", "indian oil").any(text::contains) -> FinanceCategory.FUEL
+        listOf("swiggy", "zomato", "restaurant", "cafe", "dominos", "mcdonald").any(text::contains) -> FinanceCategory.FOOD_DINING
+        listOf("grocery", "supermarket", "dmart", "bigbasket", "zepto", "blinkit", "jiomart").any(text::contains) -> FinanceCategory.GROCERY
+        listOf("amazon", "flipkart", "myntra", "ajio", "shopping").any(text::contains) -> FinanceCategory.SHOPPING
+        listOf("electricity", "water bill", "gas bill", "recharge", "broadband", "airtel", "jio").any(text::contains) -> FinanceCategory.UTILITIES
+        listOf("mutual fund", "sip", "zerodha", "groww", "upstox", "investment", "etf").any(text::contains) -> FinanceCategory.INVESTMENT
+        listOf("hospital", "pharmacy", "apollo", "medical", "doctor").any(text::contains) -> FinanceCategory.MEDICAL
+        listOf("school", "college", "tuition", "education", "course").any(text::contains) -> FinanceCategory.EDUCATION
+        listOf("netflix", "spotify", "hotstar", "prime video", "subscription").any(text::contains) -> FinanceCategory.SUBSCRIPTION
+        listOf("uber", "ola", "irctc", "airlines", "flight", "travel").any(text::contains) -> FinanceCategory.TRAVEL
+        listOf("cinema", "movie", "bookmyshow", "entertainment").any(text::contains) -> FinanceCategory.ENTERTAINMENT
+        listOf("atm", "cash withdrawal").any(text::contains) -> FinanceCategory.ATM
+        listOf("rent", "landlord").any(text::contains) -> FinanceCategory.RENT
+        listOf("government", "treasury", "challan").any(text::contains) -> FinanceCategory.GOVERNMENT
+        type == TransactionType.TRANSFER -> FinanceCategory.TRANSFER
         else -> FinanceCategory.MISCELLANEOUS
     }
 
     private fun extractMerchant(body: String, fallback: String): String {
-        val candidates = listOf(" at ", " to ", " from ")
-        candidates.forEach { token ->
+        listOf(" at ", " to ", " from ", " towards ").forEach { token ->
             val idx = body.lowercase().indexOf(token)
             if (idx >= 0) {
-                val part = body.substring(idx + token.length).take(35).trim().trim('.', ',', ';', ':')
+                val part = body.substring(idx + token.length).take(42).trim().trim('.', ',', ';', ':')
                 if (part.length >= 2) return part
             }
         }
